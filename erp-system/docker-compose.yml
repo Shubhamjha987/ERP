@@ -1,0 +1,74 @@
+version: "3.8"
+
+# =====================================================
+# ERP SYSTEM - Docker Compose (Full Stack)
+# Includes: Spring Boot App + PostgreSQL 15
+# =====================================================
+
+services:
+  # =====================================================
+  # PostgreSQL 15 Database
+  # =====================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: erp_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d erp_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erp-network
+
+  # =====================================================
+  # ERP Spring Boot Application
+  # Hibernate will auto-create tables on first run
+  # =====================================================
+  erp-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-application
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_USERNAME: postgres
+      DB_PASSWORD: 1234
+      JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      # Hibernate DDL auto (update = create-or-update tables)
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - erp-network
+    volumes:
+      - app_logs:/app/logs
+
+volumes:
+  postgres_data:
+    driver: local
+  app_logs:
+    driver: local
+
+networks:
+  erp-network:
+    driver: bridge
